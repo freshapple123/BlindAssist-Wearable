@@ -1,0 +1,50 @@
+
+라즈베리파이 OS는 기본적으로 libcamera 라이브러리를 사용함.
+혹시 모를 문제를 방지하기 위해 최신 버전으로 업데이트:
+
+sudo apt update && sudo apt upgrade -y
+
+
+
+카메라가 인식되는지 확인:
+
+libcamera-hello --list-cameras
+
+
+
+tmux는 여러 개의 터미널을 하나의 창에서 관리할 수 있는 강력한 도구
+설치 (한 번만 하면 됨)
+
+sudo apt update && sudo apt install tmux -y
+
+터미널 분할
+
+가로 분할: Ctrl + B, 그다음 %
+
+세로 분할: Ctrl + B, 그다음 "
+
+창 이동
+
+Ctrl + B, 그다음 ←, →, ↑, ↓
+
+종료
+
+exit 입력 후 Enter
+
+또는 Ctrl + B, 그다음 X, Y
+
+
+
+ 사용법
+
+tmux
+
+Libcamera를 사용한 실시간 영상 출력
+터미널을 열고 첫 번째 카메라(CAM0)의 실시간 영상을 출력하려면 다음 명령어를 실행합니다:
+
+text
+libcamera-hello --camera 0 -t 0
+두 번째 터미널을 열고 두 번째 카메라(CAM1)의 실시간 영상을 출력하려면 다음 명령어를 실행합니다:
+
+text
+libcamera-hello --camera 1 -t 0
