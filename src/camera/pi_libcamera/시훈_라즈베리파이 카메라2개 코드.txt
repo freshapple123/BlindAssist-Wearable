@@ -1,0 +1,49 @@
+📷 Raspberry Pi - libcamera 및 tmux를 이용한 듀얼 카메라 실시간 출력
+✅ 1. 시스템 및 라이브러리 업데이트
+Raspberry Pi OS는 기본적으로 libcamera 라이브러리를 사용하여 카메라를 제어합니다.
+원활한 사용을 위해 시스템과 라이브러리를 최신 상태로 유지하는 것이 중요합니다.
+
+sudo apt update && sudo apt upgrade -y
+✅ 2. 카메라 인식 확인
+Raspberry Pi에 연결된 카메라가 제대로 인식되었는지 확인합니다.
+
+libcamera-hello --list-cameras
+인식된 카메라의 목록이 출력됨
+
+각 카메라는 --camera 0, --camera 1 형식으로 접근
+
+✅ 3. tmux 설치 및 사용
+tmux는 하나의 터미널 창에서 여러 개의 세션을 동시에 사용할 수 있는 터미널 멀티플렉서입니다.
+
+📥 설치 명령어 (한 번만 실행하면 됨)
+sudo apt install tmux -y
+🧩 주요 단축키
+tmux 실행
+
+tmux
+창 분할
+
+가로 분할: Ctrl + B → %
+
+세로 분할: Ctrl + B → "
+
+창 간 이동
+
+Ctrl + B (손가락 뗀 후) 방향키(←, →, ↑, ↓)
+
+창 종료
+
+각 창에서 exit 입력
+
+또는 Ctrl + B → X → Y
+
+✅ 4. 카메라 실시간 영상 출력
+두 개의 카메라를 동시에 확인하려면 tmux로 터미널을 분할한 뒤 각각 다음 명령어를 입력합니다.
+
+첫 번째 카메라 (CAM0):
+
+libcamera-hello --camera 0 -t 0
+두 번째 카메라 (CAM1):
+
+libcamera-hello --camera 1 -t 0
+-t 0은 영상 출력을 무한 시간으로 유지합니다. 중지하려면 Ctrl + C
