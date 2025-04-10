@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 capL = cv2.VideoCapture(1)
-capR = cv2.VideoCapture(2)
+capR = cv2.VideoCapture(0)
 
 if not capL.isOpened() or not capR.isOpened():
     print("카메라 열기 실패")
