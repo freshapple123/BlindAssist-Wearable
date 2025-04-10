@@ -6,7 +6,7 @@ import threading
 
 # libcamera-vid 명령어 정의
 def start_camera(camera_id, frame_holder):
-    cmd = f'libcamera-vid --inline --nopreview -t 0 --codec mjpeg --width 640 --height 480 --framerate 30 -o - --camera {camera_id}'
+    cmd = f'libcamera-vid --inline --nopreview -t 0 --codec mjpeg --width 320 --height 240 --framerate 30 -o - --camera {camera_id}'
     process = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     buffer = b""
@@ -24,6 +24,7 @@ def start_camera(camera_id, frame_holder):
             buffer = buffer[b+2:]
             frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
             if frame is not None:
+                frame = cv2.flip(frame, 0)
                 frame_holder[0] = frame
 
     process.terminate()
