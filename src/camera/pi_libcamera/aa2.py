@@ -30,15 +30,20 @@ def start_camera(camera_id, frame_holder):
 
     process.terminate()
 
-# 프레임 저장 변수
+# 프레임 저장
 frameL = [None]
 frameR = [None]
 
 # 카메라 쓰레드 시작
-threadL = threading.Thread(target=start_camera, args=(0, frameL))
-threadR = threading.Thread(target=start_camera, args=(1, frameR))
-threadL.start()
-threadR.start()
+threading.Thread(target=start_camera, args=(0, frameL)).start()
+threading.Thread(target=start_camera, args=(1, frameR)).start()
+
+# 특징점 추출기
+orb = cv2.ORB_create(1000)
+bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+homography = None
+update_every = 30  # 몇 프레임마다 H 계산
+frame_count = 0
 
 try:
     while True:
@@ -47,26 +52,32 @@ try:
 
         left = frameL[0]
         right = frameR[0]
+        frame_count += 1
 
-        # 고정된 파라미터 조절 (필요시 수동 변경)
-        cut_px = 247      # 왼쪽 영상 자르는 부분
-        align_px = -10    # 오른쪽 영상 수직 정렬 (음수면 위로)
+        if frame_count % update_every == 0 or homography is None:
+            # 특징점 검출
+            kp1, des1 = orb.detectAndCompute(left, None)
+            kp2, des2 = orb.detectAndCompute(right, None)
 
-        hL, wL = left.shape[:2]
-        cut_px = min(cut_px, wL - 1)
-        left_crop = left[:, : wL - cut_px]
+            if des1 is not None and des2 is not None:
+                matches = bf.match(des1, des2)
+                matches = sorted(matches, key=lambda x: x.distance)
+                
+                if len(matches) > 10:
+                    pts1 = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+                    pts2 = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
 
-        # 높이 맞추기
-        min_h = min(left_crop.shape[0], right.shape[0])
-        left_crop = left_crop[:min_h, :]
-        right_crop = right[:min_h, :]
+                    # Homography 계산
+                    H, _ = cv2.findHomography(pts2, pts1, cv2.RANSAC, 5.0)
+                    if H is not None:
+                        homography = H
 
-        # 수직 정렬
-        right_crop = np.roll(right_crop, align_px, axis=0)
+        if homography is not None:
+            # 스티칭
+            warped = cv2.warpPerspective(right, homography, (left.shape[1]*2, left.shape[0]))
+            warped[0:left.shape[0], 0:left.shape[1]] = left
 
-        # 파노라마 스티칭
-        panorama = cv2.hconcat([left_crop, right_crop])
-        cv2.imshow("Live Stitching", panorama)
+            cv2.imshow("Live Panorama", warped)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
