@@ -47,7 +47,7 @@ bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
 homography = None
 last_update_time = 0
-update_interval = 3.0  # 3초마다 갱신
+update_interval = 1.0  # 3초마다 갱신
 
 try:
     while True:
