@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QLabel, QVBoxLayout, QApplication, QWidget,
                            QSlider, QHBoxLayout, QGroupBox)
 from picamera2 import Picamera2
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtCore import QThread, Qt, pyqtSignal
+from PyQt5.QtCore import QThread, Qt, pyqtSignal, pyqtSlot  # pyqtSlot 추가
 import RPi.GPIO as gp
 import numpy as np
 import time
