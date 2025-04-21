@@ -11,6 +11,21 @@ import os
 width, height = 320, 240
 overlap_width = 80  # 겹치는 영역의 너비
 
+adapter_info = {  
+    "A": {   
+        "i2c_cmd": "i2cset -y 1 0x70 0x00 0x04",
+        "gpio_sta": [0, 0, 1],
+    }, 
+    "B": {
+        "i2c_cmd": "i2cset -y 1 0x70 0x00 0x05",
+        "gpio_sta": [1, 0, 1],
+    }, 
+    "C": {
+        "i2c_cmd": "i2cset -y 1 0x70 0x00 0x06",
+        "gpio_sta": [0, 1, 0],
+    }
+}
+
 class CameraThread(QThread):
     frame_ready = pyqtSignal(str, QPixmap)  # 카메라 ID와 이미지를 전달하는 시그널
 
@@ -19,6 +34,13 @@ class CameraThread(QThread):
         self.camera_id = camera_id
         self.running = True
         
+    def select_channel(self, channel):
+        gpio_sta = adapter_info[channel]["gpio_sta"]
+        gp.output(7, gpio_sta[0])
+        gp.output(11, gpio_sta[1])
+        gp.output(12, gpio_sta[2])
+        os.system(adapter_info[channel]["i2c_cmd"])
+
     def run(self):
         while self.running:
             try:
@@ -195,3 +217,29 @@ class MainWindow(QWidget):
             self.label_overlap_left.setPixmap(pixmap)
         else:
             self.label_overlap_right.setPixmap(pixmap)
+
+if __name__ == "__main__":
+    # GPIO 초기화
+    gp.setwarnings(False)
+    gp.setmode(gp.BOARD)
+    gp.setup(7, gp.OUT)
+    gp.setup(11, gp.OUT)
+    gp.setup(12, gp.OUT)
+
+    # 카메라 초기화
+    picam2 = Picamera2()
+    picam2.configure(picam2.create_still_configuration(
+        main={"size": (width, height), "format": "BGR888"},
+        buffer_count=2
+    ))
+    picam2.start()
+    time.sleep(2)
+
+    try:
+        app = QApplication([])
+        window = MainWindow()
+        window.show()
+        app.exec()
+    finally:
+        gp.cleanup()
+        picam2.close()
