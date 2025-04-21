@@ -148,11 +148,14 @@ class WorkThread(QThread):
             images = [f.result() for f in futures]
             
             current_time = time.time()
-            if current_time - self.last_stitch_time >= STITCH_INTERVAL and any(images):
+            # 이미지 유효성 검사 수정
+            valid_images = [img for img in images if img is not None]
+            
+            if current_time - self.last_stitch_time >= STITCH_INTERVAL and len(valid_images) > 0:
                 self.last_stitch_time = current_time
                 # 스티칭 처리를 별도 스레드에서 수행
                 def process_stitch():
-                    stitched_image = self.stitch_images(images)
+                    stitched_image = self.stitch_images(valid_images)
                     if stitched_image is not None:
                         if (self.last_stitched_image is None or 
                             not np.array_equal(stitched_image[-10:,-10:], 
