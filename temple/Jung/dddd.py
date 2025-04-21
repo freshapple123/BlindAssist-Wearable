@@ -7,8 +7,8 @@ import numpy as np
 import time
 import os
 
-width = 320
-height = 240 
+width = 280
+height = 200 
 
 adapter_info = {
     "A": {"i2c_cmd": "i2cset -y 10 0x70 0x00 0x04", "gpio_sta": [0, 0, 1]},
