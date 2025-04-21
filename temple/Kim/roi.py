@@ -27,18 +27,19 @@ def setup_camera():
     gp.setmode(gp.BOARD)
     for pin in (7, 11, 12):
         gp.setup(pin, gp.OUT)
-    picam2 = Picamera2()
+        gp.output(pin, False)  # 초기 상태 초기화
     
-    # PDAF 에러 해결을 위한 상세 설정
+    picam2 = Picamera2()
     config = picam2.create_still_configuration(
         main={"size": (width, height), 
               "format": "RGB888"},
+        buffer_count=4,  # 버퍼 수 증가
         controls={
-            "NoiseReductionMode": 1,        # Fast 노이즈 감소
-            "AfMode": 0,                    # 수동 포커스
-            "AfTrigger": 0,                 # AF 트리거 비활성화
-            "LensPosition": 1.5,            # 고정 포커스 위치
-            "FrameDurationLimits": (33333, 33333),  # 프레임 속도 제한
+            "NoiseReductionMode": 0,
+            "AfMode": 0,
+            "AfTrigger": 0,
+            "FrameTimeout": 1000,  # 타임아웃 설정
+            "FrameDurationLimits": (33333, 33333)
         }
     )
     picam2.configure(config)
@@ -50,12 +51,33 @@ def select_channel(index):
         gp.output(pin, state)
     os.system(adapter_info[index]["i2c_cmd"])
 
-def capture_image(picam2, channel):
-    select_channel(channel)
-    time.sleep(0.5)  # 안정화를 위한 대기 시간 증가
-    frame = picam2.capture_array()
-    time.sleep(0.1)
-    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+def capture_image(picam2, channel, retry_count=3):
+    for attempt in range(retry_count):
+        try:
+            select_channel(channel)
+            time.sleep(0.5)  # 채널 전환 후 안정화 대기
+            
+            # 버퍼 클리어
+            for _ in range(2):
+                picam2.capture_array(wait=False)
+                time.sleep(0.1)
+            
+            frame = picam2.capture_array(wait=True)
+            if frame is not None:
+                return cv2.resize(frame, (width//2, height//2))
+        except Exception as e:
+            print(f"Capture error on attempt {attempt + 1}: {e}")
+            if attempt < retry_count - 1:
+                time.sleep(1)  # 재시도 전 대기
+                try:
+                    # 카메라 재초기화 시도
+                    picam2.stop()
+                    time.sleep(0.5)
+                    picam2.start()
+                    time.sleep(1)
+                except:
+                    pass
+    return None
 
 def find_roi_between_images(img1, img2, visualize=True):
     # 이미지 전처리 추가
@@ -111,27 +133,37 @@ def find_roi_between_images(img1, img2, visualize=True):
     return roi
 
 if __name__ == "__main__":
-    picam2 = setup_camera()
-    picam2.start()
-    time.sleep(2)  # 초기 안정화 대기
-    
+    picam2 = None
     try:
+        picam2 = setup_camera()
+        picam2.start()
+        time.sleep(2)  # 충분한 초기화 대기 시간
+        
         while True:
             img1 = capture_image(picam2, "A")
-            img2 = capture_image(picam2, "B")
-            
-            if img1 is None or img2 is None:
-                print("이미지 캡처 실패")
+            if img1 is None:
+                print("Camera A capture failed")
+                time.sleep(1)
                 continue
                 
-            roi_info = find_roi_between_images(img1, img2)
-            if roi_info:
-                print("ROI:", roi_info)
+            img2 = capture_image(picam2, "B")
+            if img2 is None:
+                print("Camera B capture failed")
+                time.sleep(1)
+                continue
             
-            if cv2.waitKey(100) & 0xFF == ord('q'):
+            roi_info = find_roi_between_images(img1, img2)
+            print("ROI:", roi_info)
+            
+            if cv2.waitKey(1000) & 0xFF == ord('q'):  # 대기 시간 증가
                 break
                 
+    except KeyboardInterrupt:
+        print("Program terminated by user")
+    except Exception as e:
+        print(f"Error: {e}")
     finally:
+        if picam2:
+            picam2.close()
         cv2.destroyAllWindows()
-        picam2.close()
         gp.cleanup()
