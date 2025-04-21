@@ -7,6 +7,9 @@ import time
 import os
 import numpy as np
 import cv2
+from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+import threading
 
 # 전역 변수 최적화
 width, height = 320, 240
@@ -30,10 +33,12 @@ adapter_info = {
 class WorkThread(QThread):
     def __init__(self):
         super().__init__()
-        self.image_buffer = []
+        self.image_buffer = Queue(maxsize=3)  # 이미지 버퍼 큐
         self.last_stitched_image = None
         self.last_stitch_time = time.time()
         self._setup_gpio()
+        self.thread_pool = ThreadPoolExecutor(max_workers=3)  # 스레드 풀 생성
+        self.running = True
         
     def _setup_gpio(self):
         gp.setwarnings(False)
@@ -51,12 +56,59 @@ class WorkThread(QThread):
     def init_i2c(self, index):
         os.system(adapter_info[index]["i2c_cmd"])
 
+    def capture_image(self, item):
+        self.select_channel(item)
+        try:
+            return cv2.resize(picam2.capture_array(), (width//2, height//2))  # 캡처 시점에서 리사이즈
+        except Exception as e:
+            print(f"capture_buffer: {e}")
+            return None
+
     def stitch_images(self, images):
         try:
-            # 이미지 크기 축소하여 처리 속도 향상
-            resized_images = [cv2.resize(img, (width//2, height//2)) for img in images]
-            merged = cv2.hconcat(resized_images)
-            return cv2.resize(merged, (width*3, height))  # 원본 크기로 복원
+            if len(images) < 2:
+                return None
+                
+            # SIFT 파라미터 최적화
+            sift = cv2.SIFT_create(nfeatures=500)  # 특징점 개수 제한
+            
+            # FLANN 매처 최적화
+            FLANN_INDEX_KDTREE = 1
+            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
+            search_params = dict(checks=30)
+            flann = cv2.FlannBasedMatcher(index_params, search_params)
+            
+            result = images[0]
+            for i in range(1, len(images)):
+                if images[i] is None:
+                    continue
+                    
+                # ROI 설정으로 매칭 영역 제한
+                roi_width = width // 4
+                img1_roi = result[:, -roi_width:]
+                img2_roi = images[i][:, :roi_width]
+                
+                # ROI 영역에서만 특징점 검출
+                kp1, des1 = sift.detectAndCompute(img1_roi, None)
+                kp2, des2 = sift.detectAndCompute(img2_roi, None)
+                
+                if des1 is None or des2 is None or len(des1) < 2 or len(des2) < 2:
+                    continue
+
+                matches = flann.knnMatch(des1, des2, k=2)
+                good = [m for m, n in matches if m.distance < 0.7 * n.distance][:20]  # 상위 20개만 사용
+                
+                if len(good) >= 4:
+                    src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+                    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+                    
+                    H, _ = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 3.0)
+                    
+                    if H is not None:
+                        result = cv2.hconcat([result, images[i]])
+            
+            return cv2.resize(result, (width*3, height))
+            
         except Exception as e:
             print(f"Stitching error: {e}")
             return None
@@ -89,28 +141,33 @@ class WorkThread(QThread):
             except Exception as e:
                 print("except: " + str(e))
 
-        while True:
-            images = []
-            for item in ("A", "B", "C"):  # set 대신 tuple 사용
-                self.select_channel(item)
-                try:
-                    images.append(picam2.capture_array())
-                except Exception as e:
-                    print(f"capture_buffer: {e}")
-
+        while self.running:
+            # 병렬로 이미지 캡처
+            futures = [self.thread_pool.submit(self.capture_image, item) 
+                      for item in ("A", "B", "C")]
+            images = [f.result() for f in futures]
+            
             current_time = time.time()
-            if current_time - self.last_stitch_time >= STITCH_INTERVAL and images:
+            if current_time - self.last_stitch_time >= STITCH_INTERVAL and any(images):
                 self.last_stitch_time = current_time
-                stitched_image = self.stitch_images(images)
-                if stitched_image is not None:
-                    # 이미지가 실제로 변경된 경우에만 UI 업데이트
-                    if (self.last_stitched_image is None or 
-                        not np.array_equal(stitched_image[-10:,-10:], self.last_stitched_image[-10:,-10:])):
-                        self.last_stitched_image = stitched_image
-                        qimage = QImage(stitched_image.data, stitched_image.shape[1],
-                                      stitched_image.shape[0], stitched_image.strides[0],
-                                      QImage.Format_RGB888)
-                        stitched_label.setPixmap(QPixmap.fromImage(qimage))
+                # 스티칭 처리를 별도 스레드에서 수행
+                def process_stitch():
+                    stitched_image = self.stitch_images(images)
+                    if stitched_image is not None:
+                        if (self.last_stitched_image is None or 
+                            not np.array_equal(stitched_image[-10:,-10:], 
+                                             self.last_stitched_image[-10:,-10:])):
+                            self.last_stitched_image = stitched_image
+                            qimage = QImage(stitched_image.data, stitched_image.shape[1],
+                                          stitched_image.shape[0], stitched_image.strides[0],
+                                          QImage.Format_RGB888)
+                            stitched_label.setPixmap(QPixmap.fromImage(qimage))
+                
+                threading.Thread(target=process_stitch).start()
+
+    def cleanup(self):
+        self.running = False
+        self.thread_pool.shutdown()
 
 # UI 부분 간소화
 app = QApplication([])
@@ -128,5 +185,6 @@ if __name__ == "__main__":
     work.start()
     window.show()
     app.exec()
+    work.cleanup()  # 종료 시 리소스 정리
     work.quit()
     picam2.close()
