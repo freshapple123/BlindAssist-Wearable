@@ -3,6 +3,7 @@ import numpy as np
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QApplication, QWidget, QSlider
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
+from picamera2 import Picamera2
 
 class ImageMerger(QWidget):
     def __init__(self):
@@ -24,9 +25,19 @@ class ImageMerger(QWidget):
 
         self.setLayout(self.layout)
 
-        # 샘플 이미지 로드 (여기서 카메라 이미지를 대체)
-        self.images = [cv2.imread(f"sample{i}.jpg") for i in range(1, 4)]  # 샘플 이미지 파일
+        # Picamera2 초기화
+        self.picam2 = Picamera2()
+        self.picam2.configure(self.picam2.create_still_configuration(main={"size": (320, 240), "format": "BGR888"}))
+        self.picam2.start()
+
+        # 카메라에서 이미지를 가져옴
+        self.images = [self.capture_image() for _ in range(3)]
         self.update_image()
+
+    def capture_image(self):
+        """Picamera2에서 이미지를 캡처."""
+        frame = self.picam2.capture_array()
+        return frame
 
     def merge_images(self, images, overlap):
         """이미지를 겹침 비율에 따라 병합."""
@@ -42,6 +53,7 @@ class ImageMerger(QWidget):
     def update_image(self):
         """슬라이더 값에 따라 이미지를 병합하고 업데이트."""
         overlap = self.slider.value()  # 겹침 비율 (%)
+        self.images = [self.capture_image() for _ in range(3)]  # 새 이미지 캡처
         merged_image = self.merge_images(self.images, overlap)
 
         if merged_image is not None:
