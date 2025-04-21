@@ -6,6 +6,7 @@ import time
 import os
 import numpy as np
 import subprocess
+import cv2  # OpenCV import 추가
 
 width = 320
 height = 240 
