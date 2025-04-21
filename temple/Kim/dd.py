@@ -49,7 +49,7 @@ class WorkThread(QThread):
         global picam2
         flag = False
 
-        # 카메라 초기화
+        # 카메라 초기화 - three.py와 동일한 방식
         for item in {"A", "B", "C"}:
             try:
                 self.select_channel(item)
@@ -75,16 +75,26 @@ class WorkThread(QThread):
         while self.running:
             for item in {"A", "B", "C"}:
                 self.select_channel(item)
-                time.sleep(0.02)
+                time.sleep(0.1)  # 0.02에서 0.1로 증가
                 try:
+                    # three.py와 동일하게 두 번 캡처
+                    buf = picam2.capture_array()
                     buf = picam2.capture_array()
                     cvimg = QImage(buf, width, height, QImage.Format_RGB888)
                     pixmap = QPixmap(cvimg)
+                    
+                    # 이전 이미지 해제
                     if item == 'A':
+                        if label_A.pixmap():
+                            label_A.pixmap().detach()
                         label_A.setPixmap(pixmap)
                     elif item == 'B':
+                        if label_B.pixmap():
+                            label_B.pixmap().detach()
                         label_B.setPixmap(pixmap)
                     elif item == 'C':
+                        if label_C.pixmap():
+                            label_C.pixmap().detach()
                         label_C.setPixmap(pixmap)
                 except Exception as e:
                     print(f"capture_buffer: {e}")
@@ -95,17 +105,17 @@ class WorkThread(QThread):
 app = QApplication([])
 window = QWidget()
 layout = QStackedLayout()
-layout.setStackingMode(QStackedLayout.StackAll)  # 모든 위젯을 겹쳐서 표시
+layout.setStackingMode(QStackedLayout.StackAll)
 
 # 레이블 설정
 label_A = QLabel()
 label_B = QLabel()
 label_C = QLabel()
 
-# 레이블 스타일 및 투명도 설정
+# 투명도 설정 수정
 label_A.setStyleSheet("QLabel { background-color: transparent; }")
-label_B.setStyleSheet("QLabel { background-color: transparent; opacity: 0.7; }")
-label_C.setStyleSheet("QLabel { background-color: transparent; opacity: 0.5; }")
+label_B.setStyleSheet("QLabel { background-color: transparent; opacity: 0.6; }")
+label_C.setStyleSheet("QLabel { background-color: transparent; opacity: 0.3; }")
 
 for label in (label_A, label_B, label_C):
     label.setFixedSize(width, height)
