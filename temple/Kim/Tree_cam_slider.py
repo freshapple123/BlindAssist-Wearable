@@ -1,7 +1,7 @@
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QApplication, QWidget
-from picamera2 import Picamera2
+from PyQt5.QtWidgets import (QLabel, QVBoxLayout, QApplication, QWidget, 
+                           QSlider, QHBoxLayout, QGroupBox, QStackedLayout)
 from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QThread, Qt
 import RPi.GPIO as gp
 import time
 import os
@@ -197,15 +197,74 @@ class WorkThread(QThread):
         self.running = False
         self.thread_pool.shutdown()
 
-# UI 부분 간소화
+# UI 부분 수정
 app = QApplication([])
 window = QWidget()
-layout = QVBoxLayout()
-stitched_label = QLabel()
-stitched_label.setFixedSize(width*3, height)
-layout.addWidget(stitched_label)
-window.setLayout(layout)
-window.setWindowTitle("Arducam Multi Camera Demo")
+main_layout = QVBoxLayout()
+
+# 이미지 표시 영역
+image_widget = QWidget()
+image_layout = QStackedLayout()
+image_layout.setStackingMode(QStackedLayout.StackAll)
+
+# 레이블 설정
+label_A = QLabel()
+label_B = QLabel()
+label_C = QLabel()
+
+for label in (label_A, label_B, label_C):
+    label.setFixedSize(width, height)
+    label.setStyleSheet("QLabel { background-color: transparent; }")
+    image_layout.addWidget(label)
+
+image_widget.setLayout(image_layout)
+main_layout.addWidget(image_widget)
+
+# 슬라이더 컨트롤 영역
+controls = QGroupBox("투명도 조절")
+slider_layout = QHBoxLayout()
+
+# B 카메라 슬라이더
+b_layout = QVBoxLayout()
+b_label = QLabel("B 카메라")
+b_slider = QSlider(Qt.Horizontal)
+b_slider.setRange(0, 100)
+b_slider.setValue(60)
+b_layout.addWidget(b_label)
+b_layout.addWidget(b_slider)
+
+# C 카메라 슬라이더
+c_layout = QVBoxLayout()
+c_label = QLabel("C 카메라")
+c_slider = QSlider(Qt.Horizontal)
+c_slider.setRange(0, 100)
+c_slider.setValue(30)
+c_layout.addWidget(c_label)
+c_layout.addWidget(c_slider)
+
+slider_layout.addLayout(b_layout)
+slider_layout.addLayout(c_layout)
+controls.setLayout(slider_layout)
+main_layout.addWidget(controls)
+
+# 슬라이더 이벤트 핸들러
+def update_opacity(label, value):
+    opacity = value / 100.0
+    effect = label.graphicsEffect()
+    if not effect:
+        effect = QGraphicsOpacityEffect()
+        label.setGraphicsEffect(effect)
+    effect.setOpacity(opacity)
+
+b_slider.valueChanged.connect(lambda v: update_opacity(label_B, v))
+c_slider.valueChanged.connect(lambda v: update_opacity(label_C, v))
+
+# 초기 투명도 설정
+update_opacity(label_B, 60)
+update_opacity(label_C, 30)
+
+window.setLayout(main_layout)
+window.setWindowTitle("카메라 뷰 투명도 조절")
 
 work = WorkThread()
 
