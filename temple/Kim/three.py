@@ -92,6 +92,8 @@ class WorkThread(QThread):
 app = QApplication([])
 window = QWidget()
 layout = QHBoxLayout()
+layout.setSpacing(0)  # 레이블 간 간격 제거
+layout.setContentsMargins(0, 0, 0, 0)  # 마진 제거
 
 # 세 개의 레이블을 가로로 배치
 label_A = QLabel()
@@ -99,6 +101,7 @@ label_B = QLabel()
 label_C = QLabel()
 for label in (label_A, label_B, label_C):
     label.setFixedSize(width, height)
+    label.setStyleSheet("QLabel { margin: 0px; padding: 0px; }")  # 레이블 자체의 마진/패딩 제거
     layout.addWidget(label)
 
 window.setLayout(layout)
