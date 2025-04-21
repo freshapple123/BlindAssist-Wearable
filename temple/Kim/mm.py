@@ -27,13 +27,14 @@ adapter_info = {
 }
 
 class CameraThread(QThread):
-    frame_ready = pyqtSignal(str, QPixmap)  # 카메라 ID와 이미지를 전달하는 시그널
+    frame_ready = pyqtSignal(str, QPixmap)
 
     def __init__(self, camera_id):
         super().__init__()
         self.camera_id = camera_id
         self.running = True
-        
+        self.initialized = False
+
     def select_channel(self, channel):
         gpio_sta = adapter_info[channel]["gpio_sta"]
         gp.output(7, gpio_sta[0])
@@ -42,10 +43,31 @@ class CameraThread(QThread):
         os.system(adapter_info[channel]["i2c_cmd"])
 
     def run(self):
+        global picam2
+        # 카메라 초기화 (Tree_cam_slider.py 방식)
+        try:
+            self.select_channel(self.camera_id)
+            time.sleep(0.5)
+            if not self.initialized:
+                picam2 = Picamera2()
+                picam2.configure(picam2.create_still_configuration(
+                    main={"size": (width, height), "format": "BGR888"},
+                    buffer_count=2
+                ))
+                picam2.start()
+                time.sleep(2)
+                self.initialized = True
+                picam2.capture_array(wait=False)
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"Camera init error: {e}")
+
+        # 메인 루프
         while self.running:
             try:
                 self.select_channel(self.camera_id)
                 time.sleep(0.1)
+                # 두 번 캡처하여 안정성 확보
                 buf = picam2.capture_array()
                 buf = picam2.capture_array()
                 cvimg = QImage(buf, width, height, QImage.Format_RGB888)
@@ -183,22 +205,26 @@ class MainWindow(QWidget):
             label.setFixedSize(overlap_width, height)
 
     def init_threads(self):
-        # 카메라 쓰레드
+        # 카메라 쓰레드들 순차적 시작
+        self.thread_B = CameraThread('B')  # B 카메라 먼저 초기화
+        self.thread_B.start()
+        time.sleep(1)
+        
         self.thread_A = CameraThread('A')
-        self.thread_B = CameraThread('B')
+        self.thread_A.start()
+        time.sleep(1)
+        
         self.thread_C = CameraThread('C')
+        self.thread_C.start()
+        time.sleep(1)
         
         # 겹침 영역 쓰레드
         self.thread_overlap_left = OverlapThread('left')
         self.thread_overlap_right = OverlapThread('right')
-
-        # 시그널 연결
-        self.thread_A.frame_ready.connect(self.update_frame)
-        self.thread_B.frame_ready.connect(self.update_frame)
-        self.thread_C.frame_ready.connect(self.update_frame)
         
-        self.thread_overlap_left.overlap_ready.connect(self.update_overlap)
-        self.thread_overlap_right.overlap_ready.connect(self.update_overlap)
+        # 모든 쓰레드 시작
+        self.thread_overlap_left.start()
+        self.thread_overlap_right.start()
 
     @pyqtSlot(str, QPixmap)
     def update_frame(self, camera_id, pixmap):
