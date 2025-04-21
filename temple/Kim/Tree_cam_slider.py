@@ -104,20 +104,23 @@ image_container = QWidget()
 image_container.setFixedSize(960, 240)  # 최대 너비는 320*3
 main_layout.addWidget(image_container)
 
-# 레이블 설정
-label_A = QLabel(image_container)
-label_B = QLabel(image_container)
+# 레이블 설정 (스택 순서 중요: 뒤에서 앞으로 C -> B -> A)
 label_C = QLabel(image_container)
+label_B = QLabel(image_container)
+label_A = QLabel(image_container)  # A가 마지막에 생성되어 가장 앞에 위치
 
 # 기본 레이블 설정
-for label in (label_A, label_B, label_C):
+for label in (label_C, label_B, label_A):  # 순서 변경
     label.setFixedSize(width, height)
     label.setStyleSheet("QLabel { background-color: transparent; }")
 
-# 초기 위치 설정 (B를 중앙에)
-label_B.move(320, 0)  # 중앙 위치
+# 초기 위치 설정
+label_B.move(320, 0)  # 중앙
 label_A.move(0, 0)    # 왼쪽
 label_C.move(640, 0)  # 오른쪽
+
+# 명시적으로 스택 순서 설정
+label_A.raise_()  # A를 최상위로
 
 # 슬라이더 컨트롤
 controls = QGroupBox("위치 조절")
