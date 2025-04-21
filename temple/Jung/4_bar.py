@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QLabel, QHBoxLayout, QVBoxLayout, QApplication, QWidget, QSlider
+from PyQt5.QtWidgets import QLabel, QVBoxLayout, QApplication, QWidget, QSlider
 from PyQt5.QtGui import QImage, QPixmap, QPainter
 from PyQt5.QtCore import QThread, Qt
 from picamera2 import Picamera2
@@ -9,15 +9,14 @@ import numpy as np
 
 width = 320
 height = 240
+images = {"A": None, "B": None, "C": None}
+offset = 0
 
 adapter_info = {
     "A": {"i2c_cmd": "i2cset -y 10 0x70 0x00 0x04", "gpio_sta": [0, 0, 1]},
     "B": {"i2c_cmd": "i2cset -y 10 0x70 0x00 0x05", "gpio_sta": [1, 0, 1]},
     "C": {"i2c_cmd": "i2cset -y 10 0x70 0x00 0x06", "gpio_sta": [0, 1, 0]}
 }
-
-images = {"A": None, "B": None, "C": None}
-offset = 0
 
 class WorkThread(QThread):
     def __init__(self):
@@ -39,7 +38,6 @@ class WorkThread(QThread):
     def run(self):
         global picam2
         flag = False
-
         for cam in {"A", "B", "C"}:
             try:
                 self.select_channel(cam)
@@ -61,61 +59,65 @@ class WorkThread(QThread):
                 picam2.capture_array(wait=False)
                 time.sleep(0.1)
             except Exception as e:
-                print(f"Init Error {cam}: {e}")
+                print("init error", cam, e)
 
         while True:
             for cam in {"A", "B", "C"}:
                 try:
                     self.select_channel(cam)
                     time.sleep(0.02)
-                    frame = picam2.capture_array()
-                    images[cam] = frame
+                    buf = picam2.capture_array()
+                    images[cam] = buf.copy()
                 except Exception as e:
-                    print(f"Capture Error {cam}: {e}")
+                    print(f"capture error {cam}: {e}")
             self.msleep(50)
 
-class BlendLabel(QLabel):
+class PanoramaDisplay(QLabel):
     def paintEvent(self, event):
         if images["C"] is None:
             return
+
         qp = QPainter(self)
-        base = QImage(images["C"].data, width, height, QImage.Format_RGB888)
-        qp.drawImage(0, 0, base)
 
+        # 중앙 고정 이미지
+        center_img = QImage(images["C"].data, width, height, QImage.Format_RGB888)
+        qp.drawImage(0, 0, center_img)
+
+        # 왼쪽 이미지 offset만큼 왼쪽에서 오른쪽으로 밀기
         if images["A"] is not None:
-            left = QImage(images["A"].data, width, height, QImage.Format_RGB888)
-            qp.drawImage(-offset, 0, left)
+            left_img = QImage(images["A"].data, width, height, QImage.Format_RGB888)
+            qp.drawImage(-offset, 0, left_img)
 
+        # 오른쪽 이미지 offset만큼 오른쪽에서 왼쪽으로 밀기
         if images["B"] is not None:
-            right = QImage(images["B"].data, width, height, QImage.Format_RGB888)
-            qp.drawImage(offset, 0, right)
+            right_img = QImage(images["B"].data, width, height, QImage.Format_RGB888)
+            qp.drawImage(offset, 0, right_img)
 
         qp.end()
 
 app = QApplication([])
 window = QWidget()
 
-# 레이아웃 구성
 layout = QVBoxLayout()
 slider = QSlider(Qt.Horizontal)
 slider.setRange(0, 320)
 slider.setValue(0)
 
-blend_label = BlendLabel()
-blend_label.setFixedSize(320, 240)
+display = PanoramaDisplay()
+display.setFixedSize(320, 240)
 
-def update_offset(value):
+def on_slider_changed(val):
     global offset
-    offset = value
-    blend_label.update()
+    offset = val
+    display.update()
 
-slider.valueChanged.connect(update_offset)
+slider.valueChanged.connect(on_slider_changed)
 
-layout.addWidget(blend_label)
+layout.addWidget(display)
 layout.addWidget(slider)
 
 window.setLayout(layout)
-window.setWindowTitle("Panorama Stitching Demo")
+window.setWindowTitle("Panorama Offset Viewer")
 window.resize(340, 300)
 
 work = WorkThread()
