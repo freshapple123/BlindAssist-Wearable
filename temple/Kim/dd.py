@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QLabel, QStackedLayout, QApplication, QWidget
+from PyQt5.QtWidgets import QLabel, QStackedLayout, QApplication, QWidget, QGraphicsOpacityEffect
 from picamera2 import Picamera2
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QThread
@@ -102,6 +102,7 @@ class WorkThread(QThread):
     def cleanup(self):
         self.running = False
 
+# GUI 초기화 부분 수정
 app = QApplication([])
 window = QWidget()
 layout = QStackedLayout()
@@ -112,13 +113,19 @@ label_A = QLabel()
 label_B = QLabel()
 label_C = QLabel()
 
-# 투명도 설정 수정
-label_A.setStyleSheet("QLabel { background-color: transparent; }")
-label_B.setStyleSheet("QLabel { background-color: transparent; opacity: 0.6; }")
-label_C.setStyleSheet("QLabel { background-color: transparent; opacity: 0.3; }")
+# 투명도 효과 설정
+opacity_effect_B = QGraphicsOpacityEffect()
+opacity_effect_B.setOpacity(0.6)
+label_B.setGraphicsEffect(opacity_effect_B)
 
+opacity_effect_C = QGraphicsOpacityEffect()
+opacity_effect_C.setOpacity(0.3)
+label_C.setGraphicsEffect(opacity_effect_C)
+
+# 배경 투명 설정
 for label in (label_A, label_B, label_C):
     label.setFixedSize(width, height)
+    label.setStyleSheet("QLabel { background-color: transparent; }")
     layout.addWidget(label)
 
 window.setLayout(layout)
