@@ -69,43 +69,63 @@ class WorkThread(QThread):
             if len(images) < 2:
                 return None
                 
-            # SIFT 파라미터 최적화
-            sift = cv2.SIFT_create(nfeatures=500)  # 특징점 개수 제한
-            
-            # FLANN 매처 최적화
-            FLANN_INDEX_KDTREE = 1
-            index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
-            search_params = dict(checks=30)
-            flann = cv2.FlannBasedMatcher(index_params, search_params)
+            # ORB 특징점 검출기 사용 (SIFT보다 빠름)
+            orb = cv2.ORB_create(nfeatures=1000)
             
             result = images[0]
             for i in range(1, len(images)):
                 if images[i] is None:
                     continue
                     
-                # ROI 설정으로 매칭 영역 제한
-                roi_width = width // 4
-                img1_roi = result[:, -roi_width:]
-                img2_roi = images[i][:, :roi_width]
+                # 오버랩 영역 설정 (20%)
+                overlap_width = int(width * 0.2)
+                img1_roi = result[:, -overlap_width:]
+                img2_roi = images[i][:, :overlap_width]
                 
-                # ROI 영역에서만 특징점 검출
-                kp1, des1 = sift.detectAndCompute(img1_roi, None)
-                kp2, des2 = sift.detectAndCompute(img2_roi, None)
+                # 특징점 검출 및 매칭
+                kp1, des1 = orb.detectAndCompute(img1_roi, None)
+                kp2, des2 = orb.detectAndCompute(img2_roi, None)
                 
-                if des1 is None or des2 is None or len(des1) < 2 or len(des2) < 2:
+                if des1 is None or des2 is None or len(des1) < 4 or len(des2) < 4:
+                    # 매칭 실패시 단순 연결
+                    result = cv2.hconcat([result, images[i]])
                     continue
 
-                matches = flann.knnMatch(des1, des2, k=2)
-                good = [m for m, n in matches if m.distance < 0.7 * n.distance][:20]  # 상위 20개만 사용
+                # Brute Force 매처 사용
+                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+                matches = bf.match(des1, des2)
                 
-                if len(good) >= 4:
-                    src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-                    dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+                # 상위 10개 매칭점만 사용
+                matches = sorted(matches, key=lambda x: x.distance)[:10]
+                
+                if len(matches) >= 4:
+                    # 매칭점 좌표 추출
+                    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+                    src_pts[:,:,0] += result.shape[1] - overlap_width  # 전체 이미지 기준 좌표로 변환
+                    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
                     
-                    H, _ = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 3.0)
+                    # 호모그래피 계산
+                    H, mask = cv2.findHomography(dst_pts, src_pts, cv2.RANSAC, 5.0)
                     
                     if H is not None:
+                        # 블렌딩을 위한 마스크 생성
+                        mask = np.zeros((height, overlap_width), dtype=np.float32)
+                        for x in range(overlap_width):
+                            mask[:,x] = x / overlap_width
+                            
+                        # 이미지 와핑 및 블렌딩
+                        warped = cv2.warpPerspective(images[i], H, (result.shape[1] + width//2, height))
+                        # 오버랩 영역 블렌딩
+                        overlap_region = result[:, -overlap_width:]
+                        warped_region = warped[:, :overlap_width]
+                        blended = cv2.addWeighted(overlap_region, 1-mask, warped_region, mask, 0)
+                        
+                        # 결과 이미지 생성
+                        result = cv2.hconcat([result[:, :-overlap_width], blended, warped[:, overlap_width:]])
+                    else:
                         result = cv2.hconcat([result, images[i]])
+                else:
+                    result = cv2.hconcat([result, images[i]])
             
             return cv2.resize(result, (width*3, height))
             
@@ -128,15 +148,20 @@ class WorkThread(QThread):
                     flag = True
                 print("init1 " + item)
                 picam2 = Picamera2()
-                picam2.configure(
-                    picam2.create_still_configuration(
-                        main={"size": (width, height), "format": "BGR888"},
-                        buffer_count=2
-                    )
+                
+                # PDAF 에러 해결을 위한 설정 수정
+                config = picam2.create_still_configuration(
+                    main={"size": (width, height), 
+                          "format": "BGR888"},
+                    buffer_count=2,
+                    controls={"NoiseReductionMode": 0,  # 노이즈 감소 비활성화
+                             "AfMode": 0,               # 자동초점 비활성화
+                             "AfTrigger": 0}           # AF 트리거 비활성화
                 )
+                picam2.configure(config)
                 picam2.start()
-                time.sleep(2)
-                picam2.capture_array(wait=False)
+                time.sleep(1)  # 대기 시간 축소
+                picam2.capture_array(wait=True)  # wait=True로 변경
                 time.sleep(0.1)
             except Exception as e:
                 print("except: " + str(e))
