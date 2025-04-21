@@ -27,7 +27,22 @@ def setup_camera():
     gp.setmode(gp.BOARD)
     for pin in (7, 11, 12):
         gp.setup(pin, gp.OUT)
-    return Picamera2()
+    picam2 = Picamera2()
+    
+    # PDAF 에러 해결을 위한 상세 설정
+    config = picam2.create_still_configuration(
+        main={"size": (width, height), 
+              "format": "RGB888"},
+        controls={
+            "NoiseReductionMode": 1,        # Fast 노이즈 감소
+            "AfMode": 0,                    # 수동 포커스
+            "AfTrigger": 0,                 # AF 트리거 비활성화
+            "LensPosition": 1.5,            # 고정 포커스 위치
+            "FrameDurationLimits": (33333, 33333),  # 프레임 속도 제한
+        }
+    )
+    picam2.configure(config)
+    return picam2
 
 def select_channel(index):
     gpio_sta = adapter_info[index]["gpio_sta"]
@@ -37,16 +52,34 @@ def select_channel(index):
 
 def capture_image(picam2, channel):
     select_channel(channel)
+    time.sleep(0.5)  # 안정화를 위한 대기 시간 증가
+    frame = picam2.capture_array()
     time.sleep(0.1)
-    return cv2.resize(picam2.capture_array(), (width//2, height//2))
+    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
 def find_roi_between_images(img1, img2, visualize=True):
-    # ORB 특징점 개수 축소
-    orb = cv2.ORB_create(nfeatures=200)
-    
-    # 이미지 그레이스케일 변환으로 처리 속도 향상
+    # 이미지 전처리 추가
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    
+    # 노이즈 제거
+    gray1 = cv2.GaussianBlur(gray1, (5,5), 0)
+    gray2 = cv2.GaussianBlur(gray2, (5,5), 0)
+    
+    # CLAHE 적용으로 대비 향상
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    gray1 = clahe.apply(gray1)
+    gray2 = clahe.apply(gray2)
+    
+    # ORB 파라미터 조정
+    orb = cv2.ORB_create(
+        nfeatures=1000,
+        scaleFactor=1.2,
+        nlevels=8,
+        edgeThreshold=31,
+        firstLevel=0,
+        patchSize=31
+    )
     
     # 특징점 검출
     kp1, des1 = orb.detectAndCompute(gray1, None)
@@ -79,23 +112,25 @@ def find_roi_between_images(img1, img2, visualize=True):
 
 if __name__ == "__main__":
     picam2 = setup_camera()
-    config = picam2.create_still_configuration(
-        main={"size": (width, height), "format": "BGR888"},
-        buffer_count=2,
-        controls={"NoiseReductionMode": 0, "AfMode": 0, "AfTrigger": 0}
-    )
-    picam2.configure(config)
     picam2.start()
-    time.sleep(2)
+    time.sleep(2)  # 초기 안정화 대기
     
     try:
         while True:
             img1 = capture_image(picam2, "A")
             img2 = capture_image(picam2, "B")
+            
+            if img1 is None or img2 is None:
+                print("이미지 캡처 실패")
+                continue
+                
             roi_info = find_roi_between_images(img1, img2)
-            print("ROI:", roi_info)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if roi_info:
+                print("ROI:", roi_info)
+            
+            if cv2.waitKey(100) & 0xFF == ord('q'):
                 break
+                
     finally:
         cv2.destroyAllWindows()
         picam2.close()
