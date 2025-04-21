@@ -16,7 +16,8 @@ class CameraThread(QThread):
     def run(self):
         while self.running:
             images = [self.picam2.capture_array() for _ in range(3)]
-            self.images_captured.emit(images)
+            resized_images = [cv2.resize(img, (160, 120)) for img in images]  # 해상도 축소
+            self.images_captured.emit(resized_images)
 
     def stop(self):
         self.running = False
@@ -26,7 +27,7 @@ class ImageMerger(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Image Merger with Overlap Control")
-        self.setGeometry(100, 100, 1000, 500)
+        self.setGeometry(100, 100, 800, 400)  # 창 크기 조정
 
         self.layout = QVBoxLayout()
         self.image_label = QLabel()
