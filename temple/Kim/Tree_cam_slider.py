@@ -1,6 +1,5 @@
 from PyQt5.QtWidgets import (QLabel, QVBoxLayout, QApplication, QWidget, 
-                           QSlider, QHBoxLayout, QGroupBox, QStackedLayout, 
-                           QGraphicsOpacityEffect)
+                           QSlider, QHBoxLayout, QGroupBox, QGraphicsOpacityEffect)
 from picamera2 import Picamera2
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QThread, Qt
@@ -95,75 +94,72 @@ class WorkThread(QThread):
     def cleanup(self):
         self.running = False
 
-# UI 초기화
+# UI 부분 수정
 app = QApplication([])
 window = QWidget()
 main_layout = QVBoxLayout()
 
-# 이미지 표시 영역
-image_widget = QWidget()
-image_layout = QStackedLayout()
-image_layout.setStackingMode(QStackedLayout.StackAll)
+# 이미지 컨테이너 위젯 (더 큰 크기로 설정)
+image_container = QWidget()
+image_container.setFixedSize(960, 240)  # 최대 너비는 320*3
+main_layout.addWidget(image_container)
 
 # 레이블 설정
-label_A = QLabel()
-label_B = QLabel()
-label_C = QLabel()
+label_A = QLabel(image_container)
+label_B = QLabel(image_container)
+label_C = QLabel(image_container)
 
 # 기본 레이블 설정
 for label in (label_A, label_B, label_C):
     label.setFixedSize(width, height)
     label.setStyleSheet("QLabel { background-color: transparent; }")
-    image_layout.addWidget(label)
 
-image_widget.setLayout(image_layout)
-main_layout.addWidget(image_widget)
+# 초기 위치 설정 (B를 중앙에)
+label_B.move(320, 0)  # 중앙 위치
+label_A.move(0, 0)    # 왼쪽
+label_C.move(640, 0)  # 오른쪽
 
 # 슬라이더 컨트롤
-controls = QGroupBox("투명도 조절")
+controls = QGroupBox("위치 조절")
 slider_layout = QHBoxLayout()
 
-# B 카메라 슬라이더
-b_layout = QVBoxLayout()
-b_label = QLabel("B 카메라")
-b_slider = QSlider(Qt.Horizontal)
-b_slider.setRange(0, 100)
-b_slider.setValue(60)
-b_layout.addWidget(b_label)
-b_layout.addWidget(b_slider)
+# A 카메라 위치 슬라이더
+a_layout = QVBoxLayout()
+a_label = QLabel("A 카메라 위치")
+a_slider = QSlider(Qt.Horizontal)
+a_slider.setRange(0, 320)  # 0 ~ 320 (완전 분리 ~ 완전 겹침)
+a_slider.setValue(0)
+a_layout.addWidget(a_label)
+a_layout.addWidget(a_slider)
 
-# C 카메라 슬라이더
+# C 카메라 위치 슬라이더
 c_layout = QVBoxLayout()
-c_label = QLabel("C 카메라")
+c_label = QLabel("C 카메라 위치")
 c_slider = QSlider(Qt.Horizontal)
-c_slider.setRange(0, 100)
-c_slider.setValue(30)
+c_slider.setRange(0, 320)
+c_slider.setValue(0)
 c_layout.addWidget(c_label)
 c_layout.addWidget(c_slider)
 
-slider_layout.addLayout(b_layout)
+slider_layout.addLayout(a_layout)
 slider_layout.addLayout(c_layout)
 controls.setLayout(slider_layout)
 main_layout.addWidget(controls)
 
 # 슬라이더 이벤트 핸들러
-def update_opacity(label, value):
-    opacity = value / 100.0
-    effect = label.graphicsEffect()
-    if not effect:
-        effect = QGraphicsOpacityEffect()
-        label.setGraphicsEffect(effect)
-    effect.setOpacity(opacity)
+def update_position_A(value):
+    new_x = value  # 0에서 시작해서 오른쪽으로
+    label_A.move(new_x, 0)
 
-b_slider.valueChanged.connect(lambda v: update_opacity(label_B, v))
-c_slider.valueChanged.connect(lambda v: update_opacity(label_C, v))
+def update_position_C(value):
+    new_x = 640 - value  # 640에서 시작해서 왼쪽으로
+    label_C.move(new_x, 0)
 
-# 초기 투명도 설정
-update_opacity(label_B, 60)
-update_opacity(label_C, 30)
+a_slider.valueChanged.connect(update_position_A)
+c_slider.valueChanged.connect(update_position_C)
 
 window.setLayout(main_layout)
-window.setWindowTitle("카메라 뷰 투명도 조절")
+window.setWindowTitle("카메라 뷰 위치 조절")
 
 work = WorkThread()
 
